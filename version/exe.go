@@ -86,9 +86,14 @@ func (x *elfExe) Close() error {
 func (x *elfExe) Entry() uint64 { return x.f.Entry }
 
 func (x *elfExe) ReadData(addr, size uint64) ([]byte, error) {
-	data := make([]byte, size)
 	for _, prog := range x.f.Progs {
-		if prog.Vaddr <= addr && addr+size-1 <= prog.Vaddr+prog.Filesz-1 {
+		fmt.Printf("%#x %#x %#x\n", addr, prog.Vaddr, prog.Vaddr+prog.Filesz)
+		if prog.Vaddr <= addr && addr <= prog.Vaddr+prog.Filesz-1 {
+			n := prog.Vaddr + prog.Filesz - addr
+			if n > size {
+				n = size
+			}
+			data := make([]byte, n)
 			_, err := prog.ReadAt(data, int64(addr-prog.Vaddr))
 			if err != nil {
 				return nil, err
@@ -254,6 +259,7 @@ func (x *machoExe) Entry() uint64 {
 		if !ok {
 			continue
 		}
+		// TODO: Other thread states.
 		bo := x.f.ByteOrder
 		const x86_THREAD_STATE64 = 4
 		cmd, siz := macho.LoadCmd(bo.Uint32(b[0:4])), bo.Uint32(b[4:8])

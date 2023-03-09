@@ -55,12 +55,12 @@ func ReadExe(file string) (Version, error) {
 				return v, err
 			}
 			v.Release = release
-
 		}
-		if strings.Contains(name, "_Cfunc__goboringcrypto_") || name == "crypto/internal/boring/sig.BoringCrypto" {
+		// Note: Using strings.HasPrefix because Go 1.17+ adds ".abi0" to many of these symbols.
+		if strings.Contains(name, "_Cfunc__goboringcrypto_") || strings.HasPrefix(name, "crypto/internal/boring/sig.BoringCrypto") {
 			v.BoringCrypto = true
 		}
-		if name == "crypto/internal/boring/sig.FIPSOnly" {
+		if strings.HasPrefix(name, "crypto/internal/boring/sig.FIPSOnly") {
 			v.FIPSOnly = true
 		}
 		for _, re := range standardCryptoNames {
@@ -68,7 +68,7 @@ func ReadExe(file string) (Version, error) {
 				v.StandardCrypto = true
 			}
 		}
-		if name == "crypto/internal/boring/sig.StandardCrypto" {
+		if strings.HasPrefix(name, "crypto/internal/boring/sig.StandardCrypto") {
 			v.StandardCrypto = true
 		}
 	}
@@ -112,8 +112,8 @@ var standardCryptoNames = []*regexp.Regexp{
 	re(`^crypto/sha1\.\(\*digest\)`),
 	re(`^crypto/sha256\.\(\*digest\)`),
 	re(`^crypto/rand\.\(\*devReader\)`),
-	re(`^crypto/rsa\.encrypt$`),
-	re(`^crypto/rsa\.decrypt$`),
+	re(`^crypto/rsa\.encrypt(\.abi.)?$`),
+	re(`^crypto/rsa\.decrypt(\.abi.)?$`),
 }
 
 func readBuildVersion(f exe, addr, size uint64) (string, error) {
