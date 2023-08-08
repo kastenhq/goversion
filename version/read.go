@@ -10,6 +10,8 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
+	"os"
 	"regexp"
 	"strings"
 )
@@ -26,12 +28,21 @@ type Version struct {
 // ReadExe reports information about the Go version used to build
 // the program executable named by file.
 func ReadExe(file string) (Version, error) {
+	f, err := os.Open(file)
+	if err != nil {
+		return Version{}, err
+	}
+	defer f.Close()
+
+	return ReadExeFromReader(f)
+}
+
+func ReadExeFromReader(reader io.ReaderAt) (Version, error) {
 	var v Version
-	f, err := openExe(file)
+	f, err := parseExe(reader)
 	if err != nil {
 		return v, err
 	}
-	defer f.Close()
 	isGo := false
 	for _, name := range f.SectionNames() {
 		if name == ".note.go.buildid" {
