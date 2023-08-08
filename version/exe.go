@@ -12,7 +12,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
-	"os"
 )
 
 type sym struct {
@@ -26,68 +25,53 @@ type exe interface {
 	ReadData(addr, size uint64) ([]byte, error)
 	Symbols() ([]sym, error)
 	SectionNames() []string
-	Close() error
 	ByteOrder() binary.ByteOrder
 	Entry() uint64
 	TextRange() (uint64, uint64)
 	RODataRange() (uint64, uint64)
 }
 
-func openExe(file string) (exe, error) {
-	f, err := os.Open(file)
-	if err != nil {
-		return nil, err
-	}
+func parseExe(f io.ReaderAt) (exe, error) {
 	data := make([]byte, 16)
-	if _, err := io.ReadFull(f, data); err != nil {
+	if _, err := f.ReadAt(data, 0); err != nil {
 		return nil, err
 	}
-	f.Seek(0, 0)
 	if bytes.HasPrefix(data, []byte("\x7FELF")) {
 		e, err := elf.NewFile(f)
 		if err != nil {
-			f.Close()
 			return nil, err
 		}
-		return &elfExe{f, e}, nil
+		return &elfExe{e}, nil
 	}
 	if bytes.HasPrefix(data, []byte("MZ")) {
 		e, err := pe.NewFile(f)
 		if err != nil {
-			f.Close()
 			return nil, err
 		}
-		return &peExe{f, e}, nil
+		return &peExe{e}, nil
 	}
 	if bytes.HasPrefix(data, []byte("\xFE\xED\xFA")) || bytes.HasPrefix(data[1:], []byte("\xFA\xED\xFE")) {
 		e, err := macho.NewFile(f)
 		if err != nil {
-			f.Close()
 			return nil, err
 		}
-		return &machoExe{f, e}, nil
+		return &machoExe{e}, nil
 	}
 	return nil, fmt.Errorf("unrecognized executable format")
 }
 
 type elfExe struct {
-	os *os.File
-	f  *elf.File
+	f *elf.File
 }
 
 func (x *elfExe) AddrSize() int { return 0 }
 
 func (x *elfExe) ByteOrder() binary.ByteOrder { return x.f.ByteOrder }
 
-func (x *elfExe) Close() error {
-	return x.os.Close()
-}
-
 func (x *elfExe) Entry() uint64 { return x.f.Entry }
 
 func (x *elfExe) ReadData(addr, size uint64) ([]byte, error) {
 	for _, prog := range x.f.Progs {
-		fmt.Printf("%#x %#x %#x\n", addr, prog.Vaddr, prog.Vaddr+prog.Filesz)
 		if prog.Vaddr <= addr && addr <= prog.Vaddr+prog.Filesz-1 {
 			n := prog.Vaddr + prog.Filesz - addr
 			if n > size {
@@ -148,8 +132,7 @@ func (x *elfExe) RODataRange() (uint64, uint64) {
 }
 
 type peExe struct {
-	os *os.File
-	f  *pe.File
+	f *pe.File
 }
 
 func (x *peExe) imageBase() uint64 {
@@ -170,10 +153,6 @@ func (x *peExe) AddrSize() int {
 }
 
 func (x *peExe) ByteOrder() binary.ByteOrder { return binary.LittleEndian }
-
-func (x *peExe) Close() error {
-	return x.os.Close()
-}
 
 func (x *peExe) Entry() uint64 {
 	switch oh := x.f.OptionalHeader.(type) {
@@ -236,8 +215,7 @@ func (x *peExe) RODataRange() (uint64, uint64) {
 }
 
 type machoExe struct {
-	os *os.File
-	f  *macho.File
+	f *macho.File
 }
 
 func (x *machoExe) AddrSize() int {
@@ -248,10 +226,6 @@ func (x *machoExe) AddrSize() int {
 }
 
 func (x *machoExe) ByteOrder() binary.ByteOrder { return x.f.ByteOrder }
-
-func (x *machoExe) Close() error {
-	return x.os.Close()
-}
 
 func (x *machoExe) Entry() uint64 {
 	for _, load := range x.f.Loads {
